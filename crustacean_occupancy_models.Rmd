@@ -156,15 +156,17 @@ sumStats<-ddply(mydata,.(OTU),summarise,nuLakes=length(unique(Lake[Count!=0])))
 head(sumStats)
 ```
 
-Just to get something working - let just use OTUs seen in at least 6 lakes (later will can relax this and 
+Just to get something working - let just use OTUs seen in at least 6 lakes (later will can relax this and
 even drop the "lake effect" for OTU seen in only one lake)
 
 ```{r}
 
-mydata<-subset(mydata,OTU%in%sumStats$OTU[sumStats$nuLakes>6])
+mydata<-subset(mydata,OTU%in%sumStats$OTU[sumStats$nuLakes>5])
 length(unique(mydata$OTU))
 
-#just 5??
+# just 5??
+# yes, most of the OTUs were quite rare.
+# my explanation - the eDNA detects up small crustaceans only if biomasses are high enough, and that seems to happen when the trophic conditions of the lake are high.
 
 ```
 
