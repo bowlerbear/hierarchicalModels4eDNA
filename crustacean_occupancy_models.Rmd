@@ -1,0 +1,191 @@
+---
+title: "Small crustacean occupancy models"
+author: "Diana Bowler, Miki Bálint"
+output:
+  html_notebook:
+    toc: yes
+    toc_depth: 3
+  html_document:
+    theme: united
+    toc: yes
+    toc_depth: 3
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+---
+```{r include=FALSE}
+library(tidyverse)
+library(plyr)
+library(ggplot2)
+library(reshape2)
+library(unmarked)
+library(boot)
+```
+
+# Crustacean OTU abundances and metadata
+```{r}
+rm(list = ls())
+crustacean_otu_meta <- read.csv(file="crustacean_otu_meta.csv",
+                                header = T, row.names = 1)
+crustacean_final_replicates <- read.csv(file = "crustacean_final_replicates.csv",
+                                        header = T, row.names = 1)
+```
+
+## Prepare data
+```{r}
+#get data files
+mydata<-crustacean_final_replicates
+mydata <- data.frame(X = rownames(crustacean_final_replicates),
+                     crustacean_final_replicates)
+
+#melt the data frame. very long, load the data instead
+mydata<-melt(mydata,id="X")
+names(mydata)<-c("OTU","Sample","Count")
+
+#separate the sample columns
+mydata$Rep<-sapply(as.character(mydata$Sample),function(x)strsplit(x,"_")[[1]][2])
+mydata$Lake<-sapply(as.character(mydata$Sample),function(x)strsplit(x,"\\.")[[1]][2])
+mydata$Depth<-sapply(as.character(mydata$Sample),function(x)strsplit(x,"\\.")[[1]][3])
+mydata$Depth<-as.numeric(sapply(mydata$Depth,function(x)strsplit(x,"_")[[1]][1]))
+```
+
+## Remove OTU seen less than 7x
+```{r}
+#summary statistics of the OTUs
+sumStats<-ddply(mydata,.(OTU),summarise,
+                nu=length(Count[Count>0&!is.na(Count)]))
+sumStats
+mydata<-subset(mydata,!mydata$OTU%in%sumStats$OTU[sumStats$nu < 7])
+```
+
+# Plotting the data
+```{r fig.asp=1.3}
+ggplot(data=mydata,
+       aes(x=Depth,y=Count))+
+  scale_y_log10()+
+  geom_point(aes(colour=Rep))+
+  facet_grid(OTU~Lake)
+```
+
+# Fit site-occupancy model 
+
+## Format data for unmarked
+
+For simplicity combine data across lakes
+```{r}
+mydata_combined <-
+  ddply(mydata,
+        .(OTU,Depth,Rep),
+        summarise,
+        Count=sum(Count))
+```
+
+Using only presence/absence data
+```{r}
+mydata_combined$Count <- 
+  ifelse(mydata_combined$Count>0,1,0)
+```
+
+## Fit combined lake model species by species and estimate detection and occupancy at each depth
+
+```{r}
+mydataAll<-ddply(mydata_combined,
+                 .(OTU),
+                 function(x){
+  
+  #reformatting for the package
+  mydataD<-dcast(x,Depth~Rep,value.var="Count")
+  y = mydataD[,c("A","B","C","D","E","F")]
+  siteCovs = data.frame(Depth=mydataD[,"Depth"])
+  obsCovs =  list(depth=mydataD[,c("Depth","Depth","Depth","Depth","Depth","Depth")])
+  
+  #define the dataframe for the package
+  wt <- unmarkedFrameOccu(y = y, siteCovs = siteCovs, obsCovs =  obsCovs)
+  
+  #using pcount
+  ## Two models: Detection covariates follow first tilde, then Osccupancy covariates are second
+  fm1 <- occu(~depth ~Depth, data=wt)
+  
+  #take the fitted relationship of detectability with with depth
+  my_intercept<-as.numeric(fm1@estimates@estimates$det@estimates[1])
+  my_slope<-as.numeric(fm1@estimates@estimates$det@estimates[2])
+  x$predictedDetection<-inv.logit(my_intercept+my_slope*x$Depth)
+  
+  #get predicted occupancy with depth
+  my_intercept<-as.numeric(fm1@estimates@estimates$state@estimates[1])
+  my_slope<-as.numeric(fm1@estimates@estimates$state@estimates[2])
+  x$predictedOccupancy<-inv.logit(my_intercept+my_slope*x$Depth)
+  
+  return(x)
+})
+```
+
+### Plot depth-dependent detection and occupancy
+
+Relationship between depth and detection
+```{r}
+qplot(Depth,predictedDetection,data=mydataAll,colour=OTU)+
+  theme(legend.position="none")
+```
+
+Relationship between depth and occupancy
+```{r}
+qplot(Depth,predictedOccupancy,data=mydataAll,colour=OTU)+
+  theme(legend.position="none")
+```
+
+## Fit single lake model species by species and estimate detection and occupancy at each depth
+
+Diana, I don't know how to pack everything into a single function... probably would make sense.
+
+```{r}
+  #reformatting for the package
+mydataD_lake<-dcast(mydata,
+                      Depth + Lake ~ Rep,
+                      value.var="Count")
+
+  y = mydataD_lake[,c("A","B","C","D","E","F")]
+  siteCovs = data.frame(Depth = mydataD_lake[,"Depth"], 
+                        Lake = mydataD_lake[,"Lake"])
+  obsCovs =  list(depth=mydataD_lake[,c("Depth","Depth",
+                                      "Depth","Depth",
+                                      "Depth","Depth")])
+  
+  #define the dataframe for the package
+  wt <- unmarkedFrameOccu(y = y, 
+                          siteCovs = siteCovs, 
+                          obsCovs =  obsCovs)
+  
+  #using pcount
+  ## Two models: Detection covariates follow first tilde, then Osccupancy covariates are second
+  fm1_lake <- occu(~depth ~Depth + Lake, data=wt)
+  
+  #take the fitted relationship of detectability with with depth
+  my_intercept_lake <- 
+    as.numeric(fm1_lake@estimates@estimates$det@estimates[1])
+  my_slope_lake <- 
+    as.numeric(fm1_lake@estimates@estimates$det@estimates[2])
+  mydata$predictedDetection <-
+    inv.logit(my_intercept_lake+my_slope_lake*mydata$Depth)
+  
+  #get predicted occupancy with depth
+  my_intercept_lake <-
+    as.numeric(fm1_lake@estimates@estimates$state@estimates[1])
+  my_slope_lake<-as.numeric(fm1_lake@estimates@estimates$state@estimates[2])
+  mydata$predictedOccupancy <-
+    inv.logit(my_intercept_lake+my_slope_lake*mydata$Depth)
+```
+
+### Plot each lake depth and detection
+
+Depth and detection
+```{r}
+qplot(Depth,predictedDetection,data=mydata,colour=OTU)+
+  theme(legend.position="none")
+```
+
+Relationship between depth and occupancy
+```{r}
+qplot(Depth,predictedOccupancy,data=mydata,colour=OTU)+
+  theme(legend.position="none")
+```
