@@ -54,7 +54,7 @@ mydata$Depth<-as.numeric(sapply(mydata$Depth,function(x)strsplit(x,"_")[[1]][1])
 #summary statistics of the OTUs
 sumStats<-ddply(mydata,.(OTU),summarise,
                 nu=length(Count[Count>0&!is.na(Count)]))
-sumStats
+head(sumStats)
 mydata<-subset(mydata,!mydata$OTU%in%sumStats$OTU[sumStats$nu < 7])
 ```
 
@@ -82,8 +82,10 @@ mydata_combined <-
 
 Using only presence/absence data
 ```{r}
+
 mydata_combined$Count <- 
   ifelse(mydata_combined$Count>0,1,0)
+
 ```
 
 ## Fit combined lake model species by species and estimate detection and occupancy at each depth
@@ -138,9 +140,42 @@ qplot(Depth,predictedOccupancy,data=mydataAll,colour=OTU)+
 
 Diana, I don't know how to pack everything into a single function... probably would make sense.
 
+Miki, ok!
+
+Using only presence/absence data:
+
+```{r}
+mydata$Count <- 
+  ifelse(mydata$Count>0,1,0)
+```
+
+Check first that all OTUs are in multiple Lakes (we cant fit a Lake effect if not!!)
+
+```{r}
+sumStats<-ddply(mydata,.(OTU),summarise,nuLakes=length(unique(Lake[Count!=0])))
+head(sumStats)
+```
+
+Just to get something working - let just use OTUs seen in at least 6 lakes (later will can relax this and 
+even drop the "lake effect" for OTU seen in only one lake)
+
+```{r}
+
+mydata<-subset(mydata,OTU%in%sumStats$OTU[sumStats$nuLakes>6])
+length(unique(mydata$OTU))
+
+#just 5??
+
+```
+
+Now fit the model to this small dataset..
+
 ```{r}
   #reformatting for the package
-mydataD_lake<-dcast(mydata,
+
+lakeModels<-dlply(mydata,.(OTU),function(x){
+
+mydataD_lake<-dcast(x,
                       Depth + Lake ~ Rep,
                       value.var="Count")
 
@@ -160,32 +195,78 @@ mydataD_lake<-dcast(mydata,
   ## Two models: Detection covariates follow first tilde, then Osccupancy covariates are second
   fm1_lake <- occu(~depth ~Depth + Lake, data=wt)
   
+  #lets look at the summary - here you can see all the things that can be extracted
+  summary(fm1_lake)
+  
   #take the fitted relationship of detectability with with depth
   my_intercept_lake <- 
     as.numeric(fm1_lake@estimates@estimates$det@estimates[1])
   my_slope_lake <- 
     as.numeric(fm1_lake@estimates@estimates$det@estimates[2])
-  mydata$predictedDetection <-
-    inv.logit(my_intercept_lake+my_slope_lake*mydata$Depth)
+  x$predictedDetection <-
+    inv.logit(my_intercept_lake+my_slope_lake*x$Depth)
   
   #get predicted occupancy with depth
   my_intercept_lake <-
     as.numeric(fm1_lake@estimates@estimates$state@estimates[1])
   my_slope_lake<-as.numeric(fm1_lake@estimates@estimates$state@estimates[2])
-  mydata$predictedOccupancy <-
-    inv.logit(my_intercept_lake+my_slope_lake*mydata$Depth)
+  x$predictedOccupancy <-
+    inv.logit(my_intercept_lake+my_slope_lake*x$Depth)
+  
+  #get predicted effects of lake (differences between reference lake and the others)
+  #identify reference lake
+  refLake<-sort(unique(x$Lake))[1]
+  nuLakes<-length(unique(x$Lake))#so we know how many coefficients to extract
+  myEstimates=fm1_lake@estimates@estimates$state@estimates[3:(nuLakes+1)]
+  #package up the results as a data frame
+  lakeEffects<-data.frame(OTU=unique(x$OTU),
+                          refLake = refLake,
+                          LakeDiff=names(myEstimates),
+                          Coef=as.numeric(myEstimates))
+  
+  #we have two outputs
+  
+  return(list(x,lakeEffects))
+  
+  })
+  
 ```
+
+The above gave us a list with 2 sets of results per OTU
+
+Pull out the depth results first
+
+```{r}
+mydata<-ldply(lakeModels,function(x){
+        x[[1]]
+})
+
+```
+
 
 ### Plot each lake depth and detection
 
 Depth and detection
 ```{r}
+
 qplot(Depth,predictedDetection,data=mydata,colour=OTU)+
-  theme(legend.position="none")
+  theme(legend.position="none")+facet_wrap(~Lake)
+
 ```
 
 Relationship between depth and occupancy
 ```{r}
 qplot(Depth,predictedOccupancy,data=mydata,colour=OTU)+
-  theme(legend.position="none")
+  theme(legend.position="none") + facet_wrap(~Lake)
 ```
+
+Pull out the lake results - you can decide how to plot it!!
+
+```{r}
+lakeOutput<-ldply(lakeModels,function(x){
+        x[[2]]
+})
+
+head(lakeOutput)
+```
+
