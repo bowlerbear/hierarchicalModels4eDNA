@@ -272,3 +272,59 @@ lakeOutput<-ldply(lakeModels,function(x){
 head(lakeOutput)
 ```
 
+Format data in in order to fit the model in BUGS except with OTU as a random effect
+```{r}
+
+#get additional data
+environ<-read.csv("environmental_data_interpolated.csv")
+mydata$Lake<-gsub("1","",mydata$Lake)#Right????
+mydata<-merge(mydata,environ,by.x=c("Lake","Depth"),by.y=c("code","depth"))##Miki check!!!
+
+mydata$Count<-ifelse(mydata$Count>0,1,0)
+y1 <- dcast(mydata,OTU+Lake+Depth+date_final+S_Fe~Rep,value.var="Count")
+siteCovs<-y1[,1:5]
+
+#bundle data
+bugs.data <- list(y = y1[,6:11], 
+                      M = nrow(y1), 
+                      J = ncol(y1[,6:11]),
+                      time = siteCovs$date_final,
+                      site = as.numeric(as.factor(siteCovs$Lake)),
+                      otu = as.numeric(factor(siteCovs$OTU)),
+                      trophicStatus = siteCovs$S_Fe,
+                      depth = siteCovs$Depth,
+                      n.Lakes = length(unique(siteCovs$Lake)),
+                      n.OTU = length(unique(siteCovs$OTU)))
+str(bugs.data)
+
+```
+
+Run the model
+
+```{r}
+# Initial values: must give for same quantities as priors given !
+zst <- apply(bugs.data$y, 1, max, na.rm=T)        
+inits <- function(){list(z = zst, mean.p = runif(1), mean.psi = runif(1))}
+
+# Parameters monitored
+params <- c("mean.p", "alpha.depth","alpha.ts",
+            "mean.psi","beta.time") 
+
+# MCMC settings
+ni <- 5000   ;   nt <- 10   ;   nb <- 500   ;   nc <- 3
+
+# Call JAGS
+library(jagsUI)
+out1B <- jags(bugs.data, inits, params, "BUGSmodel.txt", n.chains = nc,
+              n.thin = nt, n.iter = ni, n.burnin = nb)
+```
+
+Lets look at the model coefficients
+```{r}
+print(out1B, dig = 3)
+```
+
+Lets check the model converged (the 3 chains should overlap and end on the same point)
+```{r}
+traceplot(out1B)
+```
