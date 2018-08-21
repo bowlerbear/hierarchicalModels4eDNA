@@ -108,3 +108,5 @@ out1_ST <- jags(bugs.data.ST, inits=inits, params, "eDNA_basic_ST.txt", n.chains
               n.thin = nt, n.iter = ni, n.burnin = nb)
 print(out1_ST, dig = 3)
 
+#to retrieve a different parameter at a later stage
+out1 <- update(out1_ST,parameters.to.monitor="random.beta.otu",n.iter=1000)
