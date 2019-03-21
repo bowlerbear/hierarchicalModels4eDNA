@@ -158,3 +158,4 @@ gobyDetection <- occData(gobyDetectionData, siteColName = "site",
 final_data$proxies %>%
   select(dna, lat, lon, date_final, prod_min, prod_max, Pb, DDT, S_Fe, erosion) ->
   ourSiteSampleData
+
