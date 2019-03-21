@@ -10,7 +10,7 @@ load(file="~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake D
 OTU <- "HISEQ:267:CAJCDANXX:2:1101:8581:3757_CONS_SUB_SUB_CMP"
 
 # function to fit eDNAoccupancy model on a single OTU ####
-fitEDNAmodel <- function(OTU=myOTU,modeltype="null"){
+fitEDNAmodel <- function(OTU=myOTU,modeltype="null", niter = niter){
   this_otu <- data.frame(final_data$final_otus[,OTU])
   rownames(this_otu) <-rownames(final_data$final_otus)
   names(this_otu) <- "nuReeds"
@@ -76,7 +76,8 @@ if(modeltype=="null"){
                        formulaReplicate = ~1,
                        detectionMats=formatted4Model,
                        siteColName="Lake",
-                       sampleColName="level2")
+                       sampleColName="level2",
+                       niter = niter)
   } else if (modeltype=="covariates"){
     #with ecological covariates
     #testing effect of ecological covariates on OTU occurence
@@ -87,7 +88,7 @@ if(modeltype=="null"){
                          siteColName="Lake",
                          sampleColName="level2",
                          siteAndSampleData = ourSiteSampleData,
-                         niter=2000)
+                         niter=niter)
     }else if (modeltype =="time"){
       #with time-varying covariates    
       #for testing effect of ecological covariates on community metrics e,.g. richness
@@ -98,7 +99,7 @@ if(modeltype=="null"){
                            siteColName="Lake",
                            sampleColName="level2",
                            siteAndSampleData = ourSiteSampleData,
-                           niter=2000)
+                           niter=niter)
       }
   return(fitModel)
   }
@@ -121,31 +122,7 @@ get_model_summaries <- function(fitModel){
   return(output)
   }
 
-#posteriors of each level
-posteriorSummaryOfSiteOccupancy(fitModel)#probability of a lake being occupied
-# posteriorSummaryOfSampleOccupancy(fitModel)#probabilty at a given time given lake is occupied
-#posteriorSummaryOfDetection(fitModel)#probability of detection given present at a given time and lake
-
-#########################################################################################
-
-#model checking
-plotTrace(fitModel,paramName="beta..Intercept.")
-plotTrace(fitModel,paramName="alpha..Intercept.")
-plotTrace(fitModel,paramName="delta..Intercept.")
-plotTrace(fitModel,paramName="alpha.Pb")
-plotTrace(fitModel,paramName="alpha.erosion")
-plotTrace(fitModel,paramName="alpha.S_Fe")
-plotTrace(fitModel,paramName="delta.original_date_final")
-# plotACF(fitModel,paramName="beta..Intercept.")
-# plotACF(fitModel,paramName="alpha..Intercept.")
-# 
-# ########################################################################################
-# #model selection
-# posteriorPredictiveLoss(fitModel)
-# 
-# #model predictive ability
-# posteriorSummaryOfAUC(fitModel)
-######################################################################################
+# many OTU models ####
 
 OTUlist <- c("HISEQ:267:CAJCDANXX:2:1101:3550:2152_CONS_SUB_SUB",
              "HISEQ:267:CAJCDANXX:2:1101:10865:35945_CONS_SUB_SUB_CMP",
@@ -169,14 +146,20 @@ library(plyr)
 # ldply(modelFit,get_model_summaries)
 
 #time model
-allFits_Time <- ldply(OTUlist[1:3],function(x)fitEDNAmodel(OTU=x,modeltype="time"))
+allFits_Time <- llply(OTUlist[1:2],
+                      function(x)fitEDNAmodel(OTU=x,
+                                              modeltype="time",
+                                              niter = 100))
 
-###############################################################################
+allFits_sum <- get_model_summaries(allFits_Time)
 
-#community sampling
+
+
+# community sampling ####
 
 #subset to time period estimates
-allFits_Time <- allFits_Time[grepl("alpha.factor",allFits_Time$Param),]
+allFits_Time <- allFits_Time[grepl("alpha.original_date_final",
+                                   allFits_Time$Param),]
 
 #pull out year data
 allFits_Time$Year <- gsub("alpha.factor.yearGroups.","",allFits_Time$Param)
@@ -227,9 +210,46 @@ ggplot(finalDF)+
   geom_line(aes(x=Year,y=meanRichness))+
   geom_ribbon(aes(x=Year,ymin=lowerRichness,ymax=upperRichness),alpha=0.5)
 
+####################################################################
+# evaluate models ####
+#posteriors of each level
+posteriorSummaryOfSiteOccupancy(fitModel)#probability of a lake being occupied
+# posteriorSummaryOfSampleOccupancy(fitModel)#probabilty at a given time given lake is occupied
+#posteriorSummaryOfDetection(fitModel)#probability of detection given present at a given time and lake
+
+#model checking
+plotTrace(fitModel,paramName="beta..Intercept.")
+plotTrace(fitModel,paramName="alpha..Intercept.")
+plotTrace(fitModel,paramName="delta..Intercept.")
+
+plotTrace(fitModel,paramName="delta.original_date_final")
+
+plotTrace(fitModel,paramName="alpha.erosion")
+plotTrace(fitModel,paramName="alpha.S_Fe")
+plotTrace(fitModel,paramName="delta.original_date_final")
+# plotACF(fitModel,paramName="beta..Intercept.")
+# plotACF(fitModel,paramName="alpha..Intercept.")
+
+
+
 #####################################################################################
 # community matrices for distance calculations
 acast(temp[,c(1,2,3)], Year~OTU)
+
+
+# 
+# ########################################################################################
+# #model selection
+# posteriorPredictiveLoss(fitModel)
+# 
+# #model predictive ability
+# posteriorSummaryOfAUC(fitModel)
+######################################################################################
+
+
+
+
+
 
 #############################################################################################
 
