@@ -114,7 +114,7 @@ fitEDNAmodel <- function(OTU=myOTU,modeltype="null", niter = niter, burnin = bur
     #with time-varying covariates    
     #for testing effect of ecological covariates on community metrics e,.g. richness
     fitModel <- occModel(formulaSite = ~ 1, #lake occurence probabiliy (lake area?)
-                         formulaSiteAndSample = ~ Pb + DDT, #lake-time occurrence probability
+                         formulaSiteAndSample = ~ + original_date_final + Pb, #lake-time occurrence probability
                          formulaReplicate = ~ S_Fe, #detection probability at each lake-time
                          detectionMats=formatted4Model,
                          siteColName="Lake",
