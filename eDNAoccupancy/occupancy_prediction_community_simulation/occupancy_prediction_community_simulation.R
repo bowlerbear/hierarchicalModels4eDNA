@@ -64,54 +64,7 @@ fitEDNAmodel <- function(OTU=myOTU,modeltype="null", niter = niter, burnin = bur
   ourSiteSampleData <- arrange(ourSiteSampleData,level2,Lake)
   ourSiteSampleData$level2 <- as.integer(ourSiteSampleData$level2)
   ourSiteSampleData$Lake <- as.factor(ourSiteSampleData$Lake)
-  
-  #formatting year groups ####
-  #round to nearest 5
-  ourSiteSampleData$Year <-  5 * round(ourSiteSampleData$original_date_final/5)
-  #dateSummary <- ddply(ourSiteSampleData,.(Year),summarise,
-  #                     nuLakes=length(unique(Lake)))
 
-  #before 1900-1950, group by decade
-  ourSiteSampleData$Decade <-  10 * round(ourSiteSampleData$original_date_final/10)
-
-  #pre 1900, 50 years?
-  #ourSiteSampleData$Quarter <-  25 * round(ourSiteSampleData$original_date_final/25)
-  ourSiteSampleData$Half <-  50 * round(ourSiteSampleData$original_date_final/50)
-
-  #pre 1700, pool all
-  ourSiteSampleData$Century <-  100 * round(ourSiteSampleData$original_date_final/100)
-
-  #combine groups
-  ourSiteSampleData$yearGroups <- NA
-  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final<1700] <- 1700
-  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1700] <- ourSiteSampleData$Half[ourSiteSampleData$original_date_final>1700]
-  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1900] <- ourSiteSampleData$Decade[ourSiteSampleData$original_date_final>1900]
-  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1950] <- ourSiteSampleData$Year[ourSiteSampleData$original_date_final>1950]
-  #str(ourSiteSampleData)
-  
-  #fit the occupancy model ####
-  if(modeltype=="null"){
-    #null model
-    fitModel <- occModel(formulaSite = ~1,
-                         formulaSiteAndSample = ~1,
-                         formulaReplicate = ~1,
-                         detectionMats=formatted4Model,
-                         siteColName="Lake",
-                         sampleColName="level2",
-                         niter = niter)
-  } else if (modeltype=="covariates"){
-    #with ecological covariates
-    #testing effect of ecological covariates on OTU occurence
-    fitModel <- occModel(formulaSite = ~ 1,#lake occurence probabiliy (lake area?)
-                         formulaSiteAndSample = ~ Pb+erosion+S_Fe,#lake-time occurrence probability
-                         formulaReplicate = ~ original_date_final,#detection probability at each lake-time
-                         detectionMats=formatted4Model,
-                         siteColName="Lake",
-                         sampleColName="level2",
-                         siteAndSampleData = ourSiteSampleData,
-                         niter=niter)
-  }else if (modeltype =="occupancy"){
-    #with time-varying covariates    
     #for testing effect of ecological covariates on community metrics e,.g. richness
     fitModel <- occModel(formulaSite = ~ 1, #lake occurence probabiliy (lake area?)
                          formulaSiteAndSample = ~ + original_date_final + Pb, #lake-time occurrence probability
@@ -120,8 +73,8 @@ fitEDNAmodel <- function(OTU=myOTU,modeltype="null", niter = niter, burnin = bur
                          siteColName="Lake",
                          sampleColName="level2",
                          siteAndSampleData = ourSiteSampleData,
-                         niter=100)
-  }
+                         niter=niter)
+    
   #predicted (95%CI for each parameter)
   output <- posteriorSummary(fitModel,burnin=burnin,mcError=T,outputSummary=T)
   
@@ -231,3 +184,52 @@ ggplot(finalDF)+
 #   output$OTU <- OTU
 #   return(output)
 # }
+
+# covariate and null models ####
+# #fit the occupancy model ##
+# if(modeltype=="null"){
+#   #null model
+#   fitModel <- occModel(formulaSite = ~1,
+#                        formulaSiteAndSample = ~1,
+#                        formulaReplicate = ~1,
+#                        detectionMats=formatted4Model,
+#                        siteColName="Lake",
+#                        sampleColName="level2",
+#                        niter = niter)
+# } else if (modeltype=="covariates"){
+#   #with ecological covariates
+#   #testing effect of ecological covariates on OTU occurence
+#   fitModel <- occModel(formulaSite = ~ 1,#lake occurence probabiliy (lake area?)
+#                        formulaSiteAndSample = ~ Pb+erosion+S_Fe,#lake-time occurrence probability
+#                        formulaReplicate = ~ original_date_final,#detection probability at each lake-time
+#                        detectionMats=formatted4Model,
+#                        siteColName="Lake",
+#                        sampleColName="level2",
+#                        siteAndSampleData = ourSiteSampleData,
+#                        niter=niter)
+# }else if (modeltype =="occupancy"){
+#   #with time-varying covariates   
+
+#formatting year groups ####
+# #round to nearest 5
+# ourSiteSampleData$Year <-  5 * round(ourSiteSampleData$original_date_final/5)
+# #dateSummary <- ddply(ourSiteSampleData,.(Year),summarise,
+# #                     nuLakes=length(unique(Lake)))
+# 
+# #before 1900-1950, group by decade
+# ourSiteSampleData$Decade <-  10 * round(ourSiteSampleData$original_date_final/10)
+# 
+# #pre 1900, 50 years?
+# #ourSiteSampleData$Quarter <-  25 * round(ourSiteSampleData$original_date_final/25)
+# ourSiteSampleData$Half <-  50 * round(ourSiteSampleData$original_date_final/50)
+# 
+# #pre 1700, pool all
+# ourSiteSampleData$Century <-  100 * round(ourSiteSampleData$original_date_final/100)
+# 
+# #combine groups
+# ourSiteSampleData$yearGroups <- NA
+# ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final<1700] <- 1700
+# ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1700] <- ourSiteSampleData$Half[ourSiteSampleData$original_date_final>1700]
+# ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1900] <- ourSiteSampleData$Decade[ourSiteSampleData$original_date_final>1900]
+# ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1950] <- ourSiteSampleData$Year[ourSiteSampleData$original_date_final>1950]
+# #str(ourSiteSampleData)
