@@ -57,6 +57,30 @@ fitEDNAmodel <- function(OTU=myOTU,modeltype="null", niter = niter, burnin = bur
   ourSiteSampleData <- scaleData(ourSiteSampleDataO)
   ourSiteSampleData$original_date_final <- ourSiteSampleDataO$date_final
   
+  #formatting year groups ####
+  #round to nearest 5
+  ourSiteSampleData$Year <-  5 * round(ourSiteSampleData$original_date_final/5)
+  #dateSummary <- ddply(ourSiteSampleData,.(Year),summarise,
+  #                     nuLakes=length(unique(Lake)))
+
+  #before 1900-1950, group by decade
+  ourSiteSampleData$Decade <-  10 * round(ourSiteSampleData$original_date_final/10)
+
+  #pre 1900, 50 years?
+  #ourSiteSampleData$Quarter <-  25 * round(ourSiteSampleData$original_date_final/25)
+  ourSiteSampleData$Half <-  50 * round(ourSiteSampleData$original_date_final/50)
+
+  #pre 1700, pool all
+  ourSiteSampleData$Century <-  100 * round(ourSiteSampleData$original_date_final/100)
+
+  #combine groups
+  ourSiteSampleData$yearGroups <- NA
+  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final<1700] <- 1700
+  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1700] <- ourSiteSampleData$Half[ourSiteSampleData$original_date_final>1700]
+  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1900] <- ourSiteSampleData$Decade[ourSiteSampleData$original_date_final>1900]
+  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1950] <- ourSiteSampleData$Year[ourSiteSampleData$original_date_final>1950]
+  #str(ourSiteSampleData)
+  
   #add level 2
   ourSiteSampleData$level2 <- this_otu$level2[match(ourSiteSampleData$dna,this_otu$dna)]
   ourSiteSampleData$Lake <- sapply(as.character(ourSiteSampleData$dna),
@@ -67,8 +91,8 @@ fitEDNAmodel <- function(OTU=myOTU,modeltype="null", niter = niter, burnin = bur
 
     #for testing effect of ecological covariates on community metrics e,.g. richness
     fitModel <- occModel(formulaSite = ~ 1, #lake occurence probabiliy (lake area?)
-                         formulaSiteAndSample = ~ + original_date_final + Pb, #lake-time occurrence probability
-                         formulaReplicate = ~ S_Fe, #detection probability at each lake-time
+                         formulaSiteAndSample = ~ factor(yearGroups)-1, #lake-time occurrence probability
+                         formulaReplicate = ~ original_date_final, #detection probability at each lake-time
                          detectionMats=formatted4Model,
                          siteColName="Lake",
                          sampleColName="level2",
@@ -210,26 +234,4 @@ ggplot(finalDF)+
 # }else if (modeltype =="occupancy"){
 #   #with time-varying covariates   
 
-#formatting year groups ####
-# #round to nearest 5
-# ourSiteSampleData$Year <-  5 * round(ourSiteSampleData$original_date_final/5)
-# #dateSummary <- ddply(ourSiteSampleData,.(Year),summarise,
-# #                     nuLakes=length(unique(Lake)))
-# 
-# #before 1900-1950, group by decade
-# ourSiteSampleData$Decade <-  10 * round(ourSiteSampleData$original_date_final/10)
-# 
-# #pre 1900, 50 years?
-# #ourSiteSampleData$Quarter <-  25 * round(ourSiteSampleData$original_date_final/25)
-# ourSiteSampleData$Half <-  50 * round(ourSiteSampleData$original_date_final/50)
-# 
-# #pre 1700, pool all
-# ourSiteSampleData$Century <-  100 * round(ourSiteSampleData$original_date_final/100)
-# 
-# #combine groups
-# ourSiteSampleData$yearGroups <- NA
-# ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final<1700] <- 1700
-# ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1700] <- ourSiteSampleData$Half[ourSiteSampleData$original_date_final>1700]
-# ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1900] <- ourSiteSampleData$Decade[ourSiteSampleData$original_date_final>1900]
-# ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1950] <- ourSiteSampleData$Year[ourSiteSampleData$original_date_final>1950]
-# #str(ourSiteSampleData)
+
