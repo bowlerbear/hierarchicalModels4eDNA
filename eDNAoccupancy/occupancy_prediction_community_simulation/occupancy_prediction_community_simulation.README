@@ -1,4 +1,6 @@
-this is to model occupancy probability ONLY. 
+bad_list: OTUs for which theta is overparametrized. I made this list by consecutively running the models with OTUs present in less and less replicates.
+
+this is to model occupancy probability. 
 I fit covariates only to the replicates (e.g. time, organic matter content), and leave the samples and sites unconstrained.
 
 I will then simulate communities for the samples (1000 randomly drawn presence for each OTU), and plot them against environmental covariants (e.g. time, pollution - erosion - productivity PCs, etc).

@@ -7,8 +7,6 @@ setwd("~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/w
 rm(list=ls())
 load(file="~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/Data/grenoble_experiment/output_final_dataset/final_data.Rdata")
 
-OTU <- "HISEQ:267:CAJCDANXX:2:1101:3550:2152_CONS_SUB_SUB"
-
 # function to fit eDNAoccupancy model on a single OTU ####
 fitEDNAmodel <- function(OTU=myOTU,modeltype="null", niter = niter, burnin = burnin){
   this_otu <- data.frame(final_data$final_otus[,OTU])
@@ -98,9 +96,51 @@ fitEDNAmodel <- function(OTU=myOTU,modeltype="null", niter = niter, burnin = bur
                          sampleColName="level2",
                          siteAndSampleData = ourSiteSampleData,
                          niter=niter)
-    
+    return(fitModel)
+}
+
+# many OTU models ####
+final_data$final_assign %>%
+  filter(final_data$final_assign$domain == "Eukaryota",
+         final_data$final_assign$repl_sum >= 30) %>%
+  select(otu) %>%
+  flatten() ->
+  OTUlist
+
+bad_list <- c("HISEQ:267:CAJCDANXX:2:1101:14180:3768_CONS_SUB_SUB_CMP",
+              "HISEQ:267:CAJCDANXX:2:1101:1925:3794_CONS_SUB_SUB_CMP",
+              "HISEQ:267:CAJCDANXX:2:1101:17400:23204_CONS_SUB_SUB_CMP",
+              "HISEQ:267:CAJCDANXX:2:1101:17400:23204_CONS_SUB_SUB_CMP",
+              "HISEQ:267:CAJCDANXX:2:1101:4738:2474_CONS_SUB_SUB",
+              "HISEQ:267:CAJCDANXX:2:1101:3717:14186_CONS_SUB_SUB_CMP",
+              "HISEQ:267:CAJCDANXX:2:1101:3031:18431_CONS_SUB_SUB",
+              "HISEQ:267:CAJCDANXX:2:1101:3993:35807_CONS_SUB_SUB_CMP",
+              "HISEQ:267:CAJCDANXX:2:1101:3338:50341_CONS_SUB_SUB_CMP",
+              "HISEQ:267:CAJCDANXX:2:1101:4934:51609_CONS_SUB_SUB_CMP",
+              "HISEQ:267:CAJCDANXX:2:1101:17036:52644_CONS_SUB_SUB",
+              "HISEQ:267:CAJCDANXX:2:1101:8644:54803_CONS_SUB_SUB_CMP",
+              "HISEQ:267:CAJCDANXX:2:1101:9102:61805_CONS_SUB_SUB_CMP",
+              "HISEQ:267:CAJCDANXX:2:1101:5745:67271_CONS_SUB_SUB_CMP",
+              "HISEQ:267:CAJCDANXX:2:1101:4142:81438_CONS_SUB_SUB_CMP")
+good_list <- c(good_list, OTUlist[1:2])
+
+OTUlist <- OTUlist[c(!(OTUlist %in% good_list))]
+OTUlist <- OTUlist[c(!(OTUlist %in% bad_list))]
+
+allFits_occupancy <- llply(OTUlist,
+                      function(x)fitEDNAmodel(OTU=x,
+                                              modeltype="occupancy",
+                                              niter = 2),
+                      .inform = T)
+
+names(allFits_occupancy) <- OTUlist
+
+
+# function to get model summaries ####
+get_model_summaries <- function(fitModel){
+  
   #predicted (95%CI for each parameter)
-  output <- posteriorSummary(fitModel,burnin=burnin,mcError=T,outputSummary=T)
+  output <- posteriorSummary(fitModel,burnin=50,mcError = T, outputSummary=T)
   
   #combine into a data frame
   Params <- data.frame(output[[1]])
@@ -110,31 +150,15 @@ fitEDNAmodel <- function(OTU=myOTU,modeltype="null", niter = niter, burnin = bur
   output$Param <- row.names(output)
   
   #add OTU to model output
-  output$OTU <- OTU
-  
-  #return it
+  # output$OTU <- names(fitModel)
   return(output)
 }
 
-# many OTU models ####
-OTUlist <- c("HISEQ:267:CAJCDANXX:2:1101:3550:2152_CONS_SUB_SUB",
-             "HISEQ:267:CAJCDANXX:2:1101:10865:35945_CONS_SUB_SUB_CMP",
-             "HISEQ:267:CAJCDANXX:2:1101:3573:3618_CONS_SUB_SUB_CMP",
-             "HISEQ:267:CAJCDANXX:2:1101:19514:2820_CONS_SUB_SUB_CMP",
-             "HISEQ:267:CAJCDANXX:2:1101:9155:4054_CONS_SUB_SUB",
-             "HISEQ:267:CAJCDANXX:2:1101:4872:2562_CONS_SUB_SUB",
-             "HISEQ:267:CAJCDANXX:2:1101:18124:5794_CONS_SUB_SUB_CMP",
-             "HISEQ:267:CAJCDANXX:2:1101:8581:3757_CONS_SUB_SUB_CMP",
-             "HISEQ:267:CAJCDANXX:2:1101:3946:5901_CONS_SUB_SUB_CMP",
-             "HISEQ:267:CAJCDANXX:2:1101:20906:26553_CONS_SUB_SUB_CMP",
-             "HISEQ:267:CAJCDANXX:2:1101:16520:5482_CONS_SUB_SUB",
-             "HISEQ:267:CAJCDANXX:2:1101:20004:9611_CONS_SUB_SUB_CMP",
-             "HISEQ:267:CAJCDANXX:2:1102:14534:13167_CONS_SUB_SUB_CMP")
-
-allFits_occupancy0 <- ldply(OTUlist[1:3],
-                      function(x)fitEDNAmodel(OTU=x,
-                                              modeltype="occupancy",
-                                              niter = 100, burnin = 50))
+# model summaries ####
+allFits_summary <- ldply(allFits_occupancy, 
+                         function(x) get_model_summaries(x))
+allFits_summary$OTU <- c(t(ldply(OTUlist, 
+                                 function(x) rep(x, nrow(allFits_summary)/length(OTUlist[1:3])))))
 
 # community sampling ####
 # subset to occupancy period estimates
@@ -234,4 +258,19 @@ ggplot(finalDF)+
 # }else if (modeltype =="occupancy"){
 #   #with time-varying covariates   
 
-
+#   #predicted (95%CI for each parameter)
+#   output <- posteriorSummary(fitModel,burnin=burnin,mcError=T,outputSummary=T)
+#   
+#   #combine into a data frame
+#   Params <- data.frame(output[[1]])
+#   SEs <- data.frame(output[[2]])
+#   names(SEs) <- sapply(names(SEs),function(x)paste("MCSE",x,sep="_"))
+#   output <- cbind(Params,SEs)
+#   output$Param <- row.names(output)
+#   
+#   #add OTU to model output
+#   output$OTU <- OTU
+#   
+#   #return it
+#   return(output)
+# }
