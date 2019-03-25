@@ -8,7 +8,7 @@ rm(list=ls())
 load(file="~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/Data/grenoble_experiment/output_final_dataset/final_data.Rdata")
 
 # function to fit eDNAoccupancy model on a single OTU ####
-fitEDNAmodel <- function(OTU=myOTU,modeltype="null", niter = niter, burnin = burnin){
+fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
   this_otu <- data.frame(final_data$final_otus[,OTU])
   rownames(this_otu) <-rownames(final_data$final_otus)
   names(this_otu) <- "nuReeds"
@@ -89,129 +89,176 @@ fitEDNAmodel <- function(OTU=myOTU,modeltype="null", niter = niter, burnin = bur
 
     #for testing effect of ecological covariates on community metrics e,.g. richness
     fitModel <- occModel(formulaSite = ~ 1, #lake occurence probabiliy (lake area?)
-                         formulaSiteAndSample = ~ factor(yearGroups)-1, #lake-time occurrence probability
+                         formulaSiteAndSample = ~ factor(yearGroups) -1, #lake-time occurrence probability
                          formulaReplicate = ~ original_date_final, #detection probability at each lake-time
                          detectionMats=formatted4Model,
                          siteColName="Lake",
                          sampleColName="level2",
                          siteAndSampleData = ourSiteSampleData,
                          niter=niter)
+    
+    # plot the traces
+    output <- posteriorSummary(fitModel, outputSummary=T, burnin = 1)
+    my_params <- rownames(data.frame(output[[1]]))
+    
+    pdf(file=paste(OTU,"_traceplot.pdf"))
+    for (i in seq(from = 1, to = length(my_params),by = 4)){
+      if (i < 25) {
+        plotTrace(fitModel, c(my_params[i],my_params[i+1],
+                              my_params[i+2],my_params[i+3]))
+        } else {
+          plotTrace(fitModel, c(my_params[i],my_params[i+1]))
+        }
+      }
+    dev.off()
+    
     return(fitModel)
 }
 
-# many OTU models ####
-final_data$final_assign %>%
-  filter(final_data$final_assign$domain == "Eukaryota",
-         final_data$final_assign$repl_sum >= 30) %>%
-  select(otu) %>%
-  flatten() ->
-  OTUlist
+# # many OTU models ####
+# final_data$final_assign %>%
+#   filter(final_data$final_assign$domain == "Eukaryota") %>%
+#   select(otu) %>%
+#   flatten() ->
+#   OTUlist
 
-bad_list <- c("HISEQ:267:CAJCDANXX:2:1101:14180:3768_CONS_SUB_SUB_CMP",
-              "HISEQ:267:CAJCDANXX:2:1101:1925:3794_CONS_SUB_SUB_CMP",
-              "HISEQ:267:CAJCDANXX:2:1101:17400:23204_CONS_SUB_SUB_CMP",
-              "HISEQ:267:CAJCDANXX:2:1101:17400:23204_CONS_SUB_SUB_CMP",
-              "HISEQ:267:CAJCDANXX:2:1101:4738:2474_CONS_SUB_SUB",
-              "HISEQ:267:CAJCDANXX:2:1101:3717:14186_CONS_SUB_SUB_CMP",
-              "HISEQ:267:CAJCDANXX:2:1101:3031:18431_CONS_SUB_SUB",
-              "HISEQ:267:CAJCDANXX:2:1101:3993:35807_CONS_SUB_SUB_CMP",
-              "HISEQ:267:CAJCDANXX:2:1101:3338:50341_CONS_SUB_SUB_CMP",
-              "HISEQ:267:CAJCDANXX:2:1101:4934:51609_CONS_SUB_SUB_CMP",
-              "HISEQ:267:CAJCDANXX:2:1101:17036:52644_CONS_SUB_SUB",
-              "HISEQ:267:CAJCDANXX:2:1101:8644:54803_CONS_SUB_SUB_CMP",
-              "HISEQ:267:CAJCDANXX:2:1101:9102:61805_CONS_SUB_SUB_CMP",
-              "HISEQ:267:CAJCDANXX:2:1101:5745:67271_CONS_SUB_SUB_CMP",
-              "HISEQ:267:CAJCDANXX:2:1101:4142:81438_CONS_SUB_SUB_CMP")
-good_list <- c(good_list, OTUlist[1:2])
+OTUlist <- c("HISEQ:267:CAJCDANXX:2:1101:4969:25485_CONS_SUB_SUB",
+             "HISEQ:267:CAJCDANXX:2:1111:2773:5692_CONS_SUB_SUB",      
+             "HISEQ:267:CAJCDANXX:2:1105:10506:33069_CONS_SUB_SUB_CMP",
+             "HISEQ:267:CAJCDANXX:2:1101:16250:29354_CONS_SUB_SUB_CMP",
+             "HISEQ:267:CAJCDANXX:2:1101:13278:2098_CONS_SUB_SUB")
 
-OTUlist <- OTUlist[c(!(OTUlist %in% good_list))]
-OTUlist <- OTUlist[c(!(OTUlist %in% bad_list))]
-
+# fit models to many OTUs
 allFits_occupancy <- llply(OTUlist,
-                      function(x)fitEDNAmodel(OTU=x,
-                                              modeltype="occupancy",
-                                              niter = 2),
-                      .inform = T)
+                           function(x) fitEDNAmodel(OTU=x, niter=1000),
+                           .inform = T)
+names(allFits_occupancy) <- unlist(OTUlist)
 
-names(allFits_occupancy) <- OTUlist
-
-
-# function to get model summaries ####
-get_model_summaries <- function(fitModel){
-  
-  #predicted (95%CI for each parameter)
-  output <- posteriorSummary(fitModel,burnin=50,mcError = T, outputSummary=T)
-  
-  #combine into a data frame
-  Params <- data.frame(output[[1]])
-  SEs <- data.frame(output[[2]])
-  names(SEs) <- sapply(names(SEs),function(x)paste("MCSE",x,sep="_"))
-  output <- cbind(Params,SEs)
-  output$Param <- row.names(output)
-  
-  #add OTU to model output
-  # output$OTU <- names(fitModel)
-  return(output)
-}
-
-# model summaries ####
-allFits_summary <- ldply(allFits_occupancy, 
-                         function(x) get_model_summaries(x))
-allFits_summary$OTU <- c(t(ldply(OTUlist, 
-                                 function(x) rep(x, nrow(allFits_summary)/length(OTUlist[1:3])))))
-
-# community sampling ####
-# subset to occupancy period estimates
-allFits_occupancy <- allFits_occupancy0[grepl("alpha.original",
-                                   allFits_occupancy0$Param),]
-
-#pull out year data
-allFits_occupancy$Year <- gsub("alpha.factor.yearGroups.","",allFits_occupancy$Param)
-
-#get sds
-allFits_occupancy$SD1 <- (allFits_occupancy$X97.5.- allFits_occupancy$Mean)/1.96
-allFits_occupancy$SD2 <- (allFits_occupancy$Mean - allFits_occupancy$X2.5.)/1.96
-allFits_occupancy$SD <- ifelse(allFits_occupancy$SD1>allFits_occupancy$SD2,allFits_occupancy$SD1,allFits_occupancy$SD2)
-
-#create a 1000 communities - the presence/absence of each species is drawn by its probability of occurence  
-myMatrix <- matrix(data=NA,nrow=nrow(allFits_occupancy),ncol=1000) 
-dim(myMatrix)
-
-#random assign the P/A for each OTU based on its occurrence probabilty
-for(j in 1:ncol(myMatrix)){
-  for(i in 1:nrow(myMatrix)){
-    #myp <- runif(1,min=allFits_occupancy$X2.5.[i],max=allFits_occupancy$X97.5.[i])#unif distribution
-    myp <- rnorm(1,mean=allFits_occupancy$Mean[i],sd=allFits_occupancy$SD[i])#normal distribution
-    #back-transform
-    myp <- probitlink(myp, inverse=T)
-    myMatrix[i,j] <- rbinom(1,1,myp) # this changes probability into PA
-  }
-}
-
-#community random matrix - each column is a simulation
-temp <- data.frame(myMatrix)
-
-#add on year/OTU information
-temp <- cbind(allFits_occupancy[,c("OTU","Year")],temp)
-
-#get species richness for each community simulation
-out <- ddply(temp,.(Year),function(x){
-  numcolwise(sum)(x)})
-#sum means add up the number of species present
-
-#get mean and 95% CI across simulated communities
-meanRichness<-apply(out[,2:1001],1,median)
-lowerRichness<-apply(out[,2:1001],1,function(x)quantile(x,0.025))
-upperRichness<-apply(out[,2:1001],1,function(x)quantile(x,0.975))
-
-#combine all
-finalDF <- data.frame(Year=as.numeric(as.character(sort(unique(allFits_occupancy$Year)))),
-                      meanRichness,lowerRichness,upperRichness)
-
-#plotting
-ggplot(finalDF)+
-  geom_line(aes(x=Year,y=meanRichness))+
-  geom_ribbon(aes(x=Year,ymin=lowerRichness,ymax=upperRichness),alpha=0.5)
+# allFits_occupancy <- llply(OTUlist,
+#                            function(x) tryCatch(fitEDNAmodel(OTU=x, niter = 10),
+#                                                 error = function(t)
+#                                                   {cat("\n theta overparametrized\n\n")}),
+#                            .inform = T)
+# names(allFits_occupancy) <- unlist(OTUlist)
+# save(file="allFits_occupancy_time_7491_eukaryotes.Rdata", allFits_occupancy)
+# load("allFits_occupancy_time_7491_eukaryotes.Rdata")
+# 
+# could fit model?
+# model_ok <- !(unlist(llply(allFits_occupancy,
+#                                  function(x)
+#                                    all(x == "\n theta overparametrized\n\n"))))
+# sum(model_ok) # 2359
+# 
+# # models that could fit
+# allFits_good <- allFits_occupancy[model_ok]
+# save(file="allFits_good.Rdata", allFits_good)
+# load("allFits_good.Rdata")
+# 
+# # function to get model summaries ####
+# get_model_summaries <- function(fitModel, burnin = burnin){
+#   
+#   #predicted (95%CI for each parameter)
+#   output <- posteriorSummary(fitModel,burnin=burnin,mcError = T, outputSummary=T)
+#   
+#   #combine into a data frame
+#   Params <- data.frame(output[[1]])
+#   SEs <- data.frame(output[[2]])
+#   names(SEs) <- sapply(names(SEs),function(x)paste("MCSE",x,sep="_"))
+#   output <- cbind(Params,SEs)
+#   output$Param <- row.names(output)
+#   
+#   #add OTU to model output
+#   # output$OTU <- names(fitModel)
+#   return(output)
+# }
+# 
+# # model summaries ####
+# # allFits_summary <- ldply(allFits_good, 
+# #                          function(x) get_model_summaries(x, burnin = 500))
+# # allFits_summary$OTU <- allFits_summary$.id
+# # save(file="allFits_good_summary.Rdata", allFits_summary)
+# load("allFits_good_summary.Rdata")
+# 
+# # model convergence ####
+# plotTrace(allFits_good[[2]], "delta.original_date_final")
+# 
+# # plot traces
+# to_subset <- sample(length(allFits_good), size = 10,
+#                     replace = F)
+# 
+# names(allFits_good)[to_subset]
+# 
+# pdf(file="traceplots_trial.pdf")
+# my_params <- unique(allFits_summary$Param)
+# for (j in names(allFits_good)[to_subset]) {
+#   plot(1:1,1:1, type = "n", main = paste(j))
+#   for (i in seq(from = 1, to = length(my_params),by = 4)){
+#     # print(c(my_params[i],my_params[i+1], my_params[i+2],my_params[i+3]))
+#     if (i < 25) {
+#       plotTrace(allFits_good[[j]], 
+#                 c(my_params[i],my_params[i+1], my_params[i+2],my_params[i+3]))
+#     } else {
+#       plotTrace(allFits_good[[j]], 
+#                 c(my_params[i],my_params[i+1]))
+#     }
+#   }
+#   }
+# dev.off()
+# 
+# 
+# 
+# # community sampling ####
+# # subset to occupancy period estimates
+# allFits_occupancy <- allFits_occupancy0[grepl("alpha.original",
+#                                    allFits_occupancy0$Param),]
+# 
+# #pull out year data
+# allFits_occupancy$Year <- gsub("alpha.factor.yearGroups.","",allFits_occupancy$Param)
+# 
+# #get sds
+# allFits_occupancy$SD1 <- (allFits_occupancy$X97.5.- allFits_occupancy$Mean)/1.96
+# allFits_occupancy$SD2 <- (allFits_occupancy$Mean - allFits_occupancy$X2.5.)/1.96
+# allFits_occupancy$SD <- ifelse(allFits_occupancy$SD1>allFits_occupancy$SD2,allFits_occupancy$SD1,allFits_occupancy$SD2)
+# 
+# #create a 1000 communities - the presence/absence of each species is drawn by its probability of occurence  
+# myMatrix <- matrix(data=NA,nrow=nrow(allFits_occupancy),ncol=1000) 
+# dim(myMatrix)
+# 
+# #random assign the P/A for each OTU based on its occurrence probabilty
+# for(j in 1:ncol(myMatrix)){
+#   for(i in 1:nrow(myMatrix)){
+#     #myp <- runif(1,min=allFits_occupancy$X2.5.[i],max=allFits_occupancy$X97.5.[i])#unif distribution
+#     myp <- rnorm(1,mean=allFits_occupancy$Mean[i],sd=allFits_occupancy$SD[i])#normal distribution
+#     #back-transform
+#     myp <- probitlink(myp, inverse=T)
+#     myMatrix[i,j] <- rbinom(1,1,myp) # this changes probability into PA
+#   }
+# }
+# 
+# #community random matrix - each column is a simulation
+# temp <- data.frame(myMatrix)
+# 
+# #add on year/OTU information
+# temp <- cbind(allFits_occupancy[,c("OTU","Year")],temp)
+# 
+# #get species richness for each community simulation
+# out <- ddply(temp,.(Year),function(x){
+#   numcolwise(sum)(x)})
+# #sum means add up the number of species present
+# 
+# #get mean and 95% CI across simulated communities
+# meanRichness<-apply(out[,2:1001],1,median)
+# lowerRichness<-apply(out[,2:1001],1,function(x)quantile(x,0.025))
+# upperRichness<-apply(out[,2:1001],1,function(x)quantile(x,0.975))
+# 
+# #combine all
+# finalDF <- data.frame(Year=as.numeric(as.character(sort(unique(allFits_occupancy$Year)))),
+#                       meanRichness,lowerRichness,upperRichness)
+# 
+# #plotting
+# ggplot(finalDF)+
+#   geom_line(aes(x=Year,y=meanRichness))+
+#   geom_ribbon(aes(x=Year,ymin=lowerRichness,ymax=upperRichness),alpha=0.5)
 
 ################################################################################
 # not used ####
