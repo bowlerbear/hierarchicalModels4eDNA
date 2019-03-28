@@ -7,6 +7,8 @@ setwd("~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/w
 rm(list=ls())
 load(file="~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/Data/grenoble_experiment/output_final_dataset/final_data.Rdata")
 
+OTU <- "HISEQ:267:CAJCDANXX:2:1105:10506:33069_CONS_SUB_SUB_CMP"
+
 # function to fit eDNAoccupancy model on a single OTU ####
 fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
   this_otu <- data.frame(final_data$final_otus[,OTU])
@@ -57,27 +59,36 @@ fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
   
   #formatting year groups ####
   #round to nearest 5
-  ourSiteSampleData$Year <-  5 * round(ourSiteSampleData$original_date_final/5)
+  # ourSiteSampleData$Year <-  5 * round(ourSiteSampleData$original_date_final/5)
   #dateSummary <- ddply(ourSiteSampleData,.(Year),summarise,
   #                     nuLakes=length(unique(Lake)))
 
   #before 1900-1950, group by decade
-  ourSiteSampleData$Decade <-  10 * round(ourSiteSampleData$original_date_final/10)
+  # ourSiteSampleData$Decade <-  10 * round(ourSiteSampleData$original_date_final/10)
 
   #pre 1900, 50 years?
-  #ourSiteSampleData$Quarter <-  25 * round(ourSiteSampleData$original_date_final/25)
+  ourSiteSampleData$Quarter <-  25 * round(ourSiteSampleData$original_date_final/25)
+  ourSiteSampleData$Quarter[1] <- 2000 # latest years are not separate
   ourSiteSampleData$Half <-  50 * round(ourSiteSampleData$original_date_final/50)
 
   #pre 1700, pool all
   ourSiteSampleData$Century <-  100 * round(ourSiteSampleData$original_date_final/100)
 
   #combine groups
-  ourSiteSampleData$yearGroups <- NA
-  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final<1700] <- 1700
-  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1700] <- ourSiteSampleData$Half[ourSiteSampleData$original_date_final>1700]
-  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1900] <- ourSiteSampleData$Decade[ourSiteSampleData$original_date_final>1900]
-  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1950] <- ourSiteSampleData$Year[ourSiteSampleData$original_date_final>1950]
+  # ourSiteSampleData$yearGroups <- NA
+  # ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final<1700] <- 1700
+  # ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1700] <- ourSiteSampleData$Half[ourSiteSampleData$original_date_final>1700]
+  # ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1900] <- ourSiteSampleData$Decade[ourSiteSampleData$original_date_final>1900]
+  # ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1900] <- ourSiteSampleData$Quarter[ourSiteSampleData$original_date_final>1900]
+  # ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1950] <- ourSiteSampleData$Year[ourSiteSampleData$original_date_final>1950]
   #str(ourSiteSampleData)
+  
+  # Anthropocene grouping
+  ourSiteSampleData$yearGroups <- NA
+  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final<1950] <- 1
+  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>=1950 &
+                                 ourSiteSampleData$original_date_final<1990] <- 2
+  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>=1990] <- 3
   
   #add level 2
   ourSiteSampleData$level2 <- this_otu$level2[match(ourSiteSampleData$dna,this_otu$dna)]
@@ -86,11 +97,16 @@ fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
   ourSiteSampleData <- arrange(ourSiteSampleData,level2,Lake)
   ourSiteSampleData$level2 <- as.integer(ourSiteSampleData$level2)
   ourSiteSampleData$Lake <- as.factor(ourSiteSampleData$Lake)
+  
+  # add depth and a factor for the uppermost layers
+  ourSiteSampleData$depth <- as.integer(sapply(as.character(ourSiteSampleData$dna),
+                                               function(x) substr(x,5,7)))
+  ourSiteSampleData$upper <- ifelse(ourSiteSampleData$depth <= 10, "upper", "lower")
 
     #for testing effect of ecological covariates on community metrics e,.g. richness
     fitModel <- occModel(formulaSite = ~ 1, #lake occurence probabiliy (lake area?)
-                         formulaSiteAndSample = ~ factor(yearGroups) -1, #lake-time occurrence probability
-                         formulaReplicate = ~ original_date_final, #detection probability at each lake-time
+                         formulaSiteAndSample = ~ factor(yearGroups)-1, #lake-time occurrence probability
+                         formulaReplicate = ~ date_final + factor(upper), #detection probability at each lake-time
                          detectionMats=formatted4Model,
                          siteColName="Lake",
                          sampleColName="level2",
@@ -98,16 +114,17 @@ fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
                          niter=niter)
     
     # plot the traces
-    output <- posteriorSummary(fitModel, outputSummary=T, burnin = 1)
+    output <- posteriorSummary(fitModel, outputSummary=T, burnin = 10)
     my_params <- rownames(data.frame(output[[1]]))
     
     pdf(file=paste(OTU,"_traceplot.pdf"))
     for (i in seq(from = 1, to = length(my_params),by = 4)){
-      if (i < 25) {
+      if (i < 5) {
         plotTrace(fitModel, c(my_params[i],my_params[i+1],
                               my_params[i+2],my_params[i+3]))
         } else {
-          plotTrace(fitModel, c(my_params[i],my_params[i+1]))
+          plotTrace(fitModel, c(my_params[i],my_params[i+1],
+                                my_params[i+2]))
         }
       }
     dev.off()
@@ -122,10 +139,8 @@ fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
 #   flatten() ->
 #   OTUlist
 
-OTUlist <- c("HISEQ:267:CAJCDANXX:2:1101:4969:25485_CONS_SUB_SUB",
-             "HISEQ:267:CAJCDANXX:2:1111:2773:5692_CONS_SUB_SUB",      
+OTUlist <- c("HISEQ:267:CAJCDANXX:2:1101:4969:25485_CONS_SUB_SUB",      
              "HISEQ:267:CAJCDANXX:2:1105:10506:33069_CONS_SUB_SUB_CMP",
-             "HISEQ:267:CAJCDANXX:2:1101:16250:29354_CONS_SUB_SUB_CMP",
              "HISEQ:267:CAJCDANXX:2:1101:13278:2098_CONS_SUB_SUB")
 
 # fit models to many OTUs
