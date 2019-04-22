@@ -3,9 +3,23 @@ library(plyr)
 library(reshape2)
 library(tidyverse)
 require(VGAM)
-setwd("~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/workdir/")
+# setwd("~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/workdir/")
 rm(list=ls())
-load(file="~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/Data/grenoble_experiment/output_final_dataset/final_data.Rdata")
+# load(file="~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/Data/grenoble_experiment/output_final_dataset/final_data.Rdata")
+load(file="../final_data.Rdata")
+
+# OTUs
+final_data$final_assign %>%
+  filter(final_data$final_assign$domain == "Eukaryota") %>%
+  select(otu) %>%
+  flatten() %>%
+  unlist() ->
+  OTUlist
+
+set1 <- OTUlist[1:2000]
+set2 <- OTUlist[2001:4000]
+set3 <- OTUlist[4001:6000]
+set4 <- OTUlist[6001:length(OTUlist)]
 
 # get environmental covariates ####
 final_data$proxies %>%
@@ -15,16 +29,19 @@ final_data$proxies %>%
 ourSiteSampleData <- subset(ourSiteSampleData, dna %in% rownames(final_data$aggr_replsum_otus))
 
 # # put replicates into site sample data
-# data.frame(final_data$final_assign, t(final_data$aggr_replsum_otus)) %>%
-#   gather(AR1.010:WM1.490, key="horizon", value="reps") %>%
-#   filter(domain == "Eukaryota", !is.na(phylum)) %>%  
-#   group_by(horizon) %>%
-#   summarize(reps_sum = sum(reps)) %>%
-#   left_join(ourSiteSampleData, by = c("horizon"="dna")) ->
-#   ourSiteSampleData
+data.frame(final_data$final_assign, t(final_data$aggr_replsum_otus)) %>%
+  gather(AR1.010:WM1.490, key="horizon", value="reps") %>%
+  filter(domain == "Eukaryota", !is.na(phylum)) %>%
+  group_by(horizon) %>%
+  summarize(reps_sum = sum(reps)) ->
+  replicates
+
+ourSiteSampleData %>%
+  left_join(replicates, by = c("dna" = "horizon")) ->
+  ourSiteSampleData
 
 # scaled reps_sum
-# ourSiteSampleData$reps_sum_scaled <- scale(ourSiteSampleData$reps_sum)
+ourSiteSampleData$reps_sum_scaled <- scale(ourSiteSampleData$reps_sum)
 
 # add lake, depth and upper layers, date polynomials
 ourSiteSampleData$Lake <- sapply(as.character(ourSiteSampleData$dna),
@@ -41,7 +58,7 @@ ourSiteSampleData$date_final_4 <- as.numeric(scale(ourSiteSampleData$date_final^
 ourSiteSampleData$date_final_5 <- as.numeric(scale(ourSiteSampleData$date_final^5))
 str(ourSiteSampleData)
 
-OTU <- "HISEQ:267:CAJCDANXX:2:1101:4969:25485_CONS_SUB_SUB"
+# OTU <- "HISEQ:267:CAJCDANXX:2:1101:4969:25485_CONS_SUB_SUB"
 
 # function to fit eDNAoccupancy model on a single OTU ####
 fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
@@ -82,14 +99,13 @@ fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
   # fit model ####
     #for testing effect of ecological covariates on community metrics e,.g. richness
   fitModel <- occModel(formulaSite = ~ 1,
-                       formulaSiteAndSample = ~ date_final_1 + 
-                         date_final_2 + date_final_3,
-                       formulaReplicate = ~ 1,
+                       formulaSiteAndSample = ~ date_final_2 + date_final_3,
+                       formulaReplicate = ~ reps_sum_scaled + upper,
                        detectionMats=formatted4Model,
                        siteColName="Lake",
                        sampleColName="level2",
                        siteAndSampleData = ourSiteSampleData,
-                       niter=100)
+                       niter=niter)
     
     # plot the traces
     post_sum <- posteriorSummary(fitModel, outputSummary=T, mcError = T, 
@@ -117,28 +133,29 @@ fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
 }
 
 # many OTU models ####
-final_data$final_assign %>%
-  filter(final_data$final_assign$domain == "Eukaryota") %>%
-  select(otu) %>%
-  flatten() %>%
-  unlist() ->
-  OTUlist
-
-allFits_occupancy <- llply(OTUlist[1:10],
-                           function(x) tryCatch(fitEDNAmodel(OTU=x, niter = 1000),
+allFits_occupancy <- llply(set4,
+                           function(x) tryCatch(fitEDNAmodel(OTU=x, niter = 20000),
                                                 error = function(t)
                                                   {cat("\n theta overparametrized\n\n")}),
                            .inform = T)
-names(allFits_occupancy) <- unlist(OTUlist)[10:20]
+names(allFits_occupancy) <- set4
+save(file="set4_models.Rdata", allFits_occupancy)
 
-save(file="allFits_occupancy_time_7491_eukaryotes.Rdata", allFits_occupancy)
+# this part of the script was run for all OTUs on malloy, start: 190422
+
 
 model_ok <- !(unlist(llply(allFits_occupancy,
                                  function(x)
                                    all(x == "\n theta overparametrized\n\n"))))
 sum(model_ok)
 
+plot(1:59,
+allFits_good$`HISEQ:267:CAJCDANXX:2:1101:9028:4557_CONS_SUB_SUB_CMP`[[3]]$mean["AR",])
 
+plot(1:40,
+final_data$aggr_replsum_otus[grep("AR", rownames(final_data$aggr_replsum_otus)),
+                             "HISEQ:267:CAJCDANXX:2:1101:9028:4557_CONS_SUB_SUB_CMP"]
+)
 
 
 # 
