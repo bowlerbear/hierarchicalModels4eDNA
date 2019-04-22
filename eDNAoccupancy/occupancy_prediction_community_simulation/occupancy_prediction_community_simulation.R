@@ -7,23 +7,26 @@ setwd("~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/w
 rm(list=ls())
 load(file="~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/Data/grenoble_experiment/output_final_dataset/final_data.Rdata")
 
-<<<<<<< HEAD
-=======
 # get environmental covariates ####
 final_data$proxies %>%
   select(dna, lat, lon, date_final, prod_min, prod_max, LoI, Pb, DDT, S_Fe, erosion) ->
   ourSiteSampleData
 
-#formatting time periods ####
-ourSiteSampleData$yearGroups <- NA
-ourSiteSampleData$yearGroups[ourSiteSampleData$date_final<1950] <- 1
-ourSiteSampleData$yearGroups[ourSiteSampleData$date_final>=1950 &
-                               ourSiteSampleData$date_final<1990] <- 2
-ourSiteSampleData$yearGroups[ourSiteSampleData$date_final>=1990] <- 3
-ourSiteSampleData$yearGroups <- factor(ourSiteSampleData$yearGroups,
-                                       levels = c("1","2","3"))
+ourSiteSampleData <- subset(ourSiteSampleData, dna %in% rownames(final_data$aggr_replsum_otus))
 
-# add lake, depth and upper layers
+# # put replicates into site sample data
+# data.frame(final_data$final_assign, t(final_data$aggr_replsum_otus)) %>%
+#   gather(AR1.010:WM1.490, key="horizon", value="reps") %>%
+#   filter(domain == "Eukaryota", !is.na(phylum)) %>%  
+#   group_by(horizon) %>%
+#   summarize(reps_sum = sum(reps)) %>%
+#   left_join(ourSiteSampleData, by = c("horizon"="dna")) ->
+#   ourSiteSampleData
+
+# scaled reps_sum
+# ourSiteSampleData$reps_sum_scaled <- scale(ourSiteSampleData$reps_sum)
+
+# add lake, depth and upper layers, date polynomials
 ourSiteSampleData$Lake <- sapply(as.character(ourSiteSampleData$dna),
                                  function(x) substr(x,1,2))
 ourSiteSampleData$Lake <- as.factor(ourSiteSampleData$Lake)
@@ -31,10 +34,14 @@ ourSiteSampleData$Depth <- as.numeric(sapply(as.character(ourSiteSampleData$dna)
                                              function(x) substr(x,5,7)))
 ourSiteSampleData$upper <- ifelse(ourSiteSampleData$Depth <= 20, "upper", "lower")
 ourSiteSampleData$upper <- factor(ourSiteSampleData$upper, levels = c("lower", "upper"))
+ourSiteSampleData$date_final_1 <- as.numeric(scale(ourSiteSampleData$date_final))
+ourSiteSampleData$date_final_2 <- as.numeric(scale(ourSiteSampleData$date_final^2))
+ourSiteSampleData$date_final_3 <- as.numeric(scale(ourSiteSampleData$date_final^3))
+ourSiteSampleData$date_final_4 <- as.numeric(scale(ourSiteSampleData$date_final^4))
+ourSiteSampleData$date_final_5 <- as.numeric(scale(ourSiteSampleData$date_final^5))
 str(ourSiteSampleData)
 
->>>>>>> d451e4cd307fdaa26f65af26954bc17d714dd0d9
-OTU <- "HISEQ:267:CAJCDANXX:2:1105:10506:33069_CONS_SUB_SUB_CMP"
+OTU <- "HISEQ:267:CAJCDANXX:2:1101:4969:25485_CONS_SUB_SUB"
 
 # function to fit eDNAoccupancy model on a single OTU ####
 fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
@@ -48,12 +55,6 @@ fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
   this_otu$Lake<-sapply(row.names(this_otu),function(x)substr(x,1,2))
   this_otu$Depth<-sapply(row.names(this_otu),function(x)strsplit(x,"\\.")[[1]][2])
   this_otu$Depth<-as.numeric(sapply(this_otu$Depth,function(x)strsplit(x,"_")[[1]][1]))
-  
-  #subset data frame for when we have OTU data ####
-  ourSiteSampleData <- subset(ourSiteSampleData,dna %in% this_otu$dna)
-  #centre/scale the date
-  ourSiteSampleData$original_date_final <- ourSiteSampleData$date_final
-  ourSiteSampleData$date_final <- scale(ourSiteSampleData$date_final)
   
   #get data in the format for eDNA occupancy detection function
   #recode depth levels - adding level2
@@ -70,7 +71,7 @@ fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
   #add level 2 to env. covariates
   ourSiteSampleData$level2 <- this_otu$level2[match(ourSiteSampleData$dna,this_otu$dna)]
   ourSiteSampleData$level2 <- as.integer(ourSiteSampleData$level2)
-  ourSiteSampleData <- arrange(ourSiteSampleData,level2,Lake)
+  # ourSiteSampleData <- arrange(ourSiteSampleData,level2,Lake)
   
   # format data for occModel input ####
   this_otu_Cast <- dcast(this_otu[,c("Lake","level2","Rep","PA")],
@@ -78,75 +79,19 @@ fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
   formatted4Model <- occData(this_otu_Cast, 
                              siteColName = "Lake", sampleColName = "level2")
   
-<<<<<<< HEAD
-  #formatting year groups ####
-  #round to nearest 5
-  # ourSiteSampleData$Year <-  5 * round(ourSiteSampleData$original_date_final/5)
-  #dateSummary <- ddply(ourSiteSampleData,.(Year),summarise,
-  #                     nuLakes=length(unique(Lake)))
-
-  #before 1900-1950, group by decade
-  # ourSiteSampleData$Decade <-  10 * round(ourSiteSampleData$original_date_final/10)
-
-  #pre 1900, 50 years?
-  ourSiteSampleData$Quarter <-  25 * round(ourSiteSampleData$original_date_final/25)
-  ourSiteSampleData$Quarter[1] <- 2000 # latest years are not separate
-  ourSiteSampleData$Half <-  50 * round(ourSiteSampleData$original_date_final/50)
-
-  #pre 1700, pool all
-  ourSiteSampleData$Century <-  100 * round(ourSiteSampleData$original_date_final/100)
-
-  #combine groups
-  # ourSiteSampleData$yearGroups <- NA
-  # ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final<1700] <- 1700
-  # ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1700] <- ourSiteSampleData$Half[ourSiteSampleData$original_date_final>1700]
-  # ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1900] <- ourSiteSampleData$Decade[ourSiteSampleData$original_date_final>1900]
-  # ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1900] <- ourSiteSampleData$Quarter[ourSiteSampleData$original_date_final>1900]
-  # ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>1950] <- ourSiteSampleData$Year[ourSiteSampleData$original_date_final>1950]
-  #str(ourSiteSampleData)
-  
-  # Anthropocene grouping
-  ourSiteSampleData$yearGroups <- NA
-  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final<1950] <- 1
-  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>=1950 &
-                                 ourSiteSampleData$original_date_final<1990] <- 2
-  ourSiteSampleData$yearGroups[ourSiteSampleData$original_date_final>=1990] <- 3
-  
-  #add level 2
-  ourSiteSampleData$level2 <- this_otu$level2[match(ourSiteSampleData$dna,this_otu$dna)]
-  ourSiteSampleData$Lake <- sapply(as.character(ourSiteSampleData$dna),
-                                   function(x) substr(x,1,2))
-  ourSiteSampleData <- arrange(ourSiteSampleData,level2,Lake)
-  ourSiteSampleData$level2 <- as.integer(ourSiteSampleData$level2)
-  ourSiteSampleData$Lake <- as.factor(ourSiteSampleData$Lake)
-  
-  # add depth and a factor for the uppermost layers
-  ourSiteSampleData$depth <- as.integer(sapply(as.character(ourSiteSampleData$dna),
-                                               function(x) substr(x,5,7)))
-  ourSiteSampleData$upper <- ifelse(ourSiteSampleData$depth <= 10, "upper", "lower")
-
-    #for testing effect of ecological covariates on community metrics e,.g. richness
-    fitModel <- occModel(formulaSite = ~ 1, #lake occurence probabiliy (lake area?)
-                         formulaSiteAndSample = ~ factor(yearGroups)-1, #lake-time occurrence probability
-                         formulaReplicate = ~ date_final + factor(upper), #detection probability at each lake-time
-=======
   # fit model ####
     #for testing effect of ecological covariates on community metrics e,.g. richness
-    fitModel <- occModel(formulaSite = ~ 1, #lake occurence probabiliy (lake area?)
-                         formulaSiteAndSample = ~ yearGroups -1, #lake-time occurrence probability
-                         formulaReplicate = ~ original_date_final + upper, #detection probability at each lake-time
->>>>>>> d451e4cd307fdaa26f65af26954bc17d714dd0d9
-                         detectionMats=formatted4Model,
-                         siteColName="Lake",
-                         sampleColName="level2",
-                         siteAndSampleData = ourSiteSampleData,
-                         niter=niter)
+  fitModel <- occModel(formulaSite = ~ 1,
+                       formulaSiteAndSample = ~ date_final_1 + 
+                         date_final_2 + date_final_3,
+                       formulaReplicate = ~ 1,
+                       detectionMats=formatted4Model,
+                       siteColName="Lake",
+                       sampleColName="level2",
+                       siteAndSampleData = ourSiteSampleData,
+                       niter=100)
     
     # plot the traces
-<<<<<<< HEAD
-    output <- posteriorSummary(fitModel, outputSummary=T, burnin = 10)
-    my_params <- rownames(data.frame(output[[1]]))
-=======
     post_sum <- posteriorSummary(fitModel, outputSummary=T, mcError = T, 
                                  burnin = niter/2)
     post_sample <- posteriorSummaryOfSampleOccupancy(fitModel, mcError = T, 
@@ -154,7 +99,6 @@ fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
     post_detect <- posteriorSummaryOfDetection(fitModel, mcError = T, 
                                                      burnin = niter/2)
     my_params <- rownames(data.frame(post_sum[[1]]))
->>>>>>> d451e4cd307fdaa26f65af26954bc17d714dd0d9
     
     pdf(file=paste(OTU,"_traceplot.pdf"))
     for (i in seq(from = 1, to = length(my_params),by = 4)){
@@ -180,41 +124,23 @@ final_data$final_assign %>%
   unlist() ->
   OTUlist
 
-<<<<<<< HEAD
-OTUlist <- c("HISEQ:267:CAJCDANXX:2:1101:4969:25485_CONS_SUB_SUB",      
-             "HISEQ:267:CAJCDANXX:2:1105:10506:33069_CONS_SUB_SUB_CMP",
-             "HISEQ:267:CAJCDANXX:2:1101:13278:2098_CONS_SUB_SUB")
-=======
->>>>>>> d451e4cd307fdaa26f65af26954bc17d714dd0d9
-
-# OTUlist <- c("HISEQ:267:CAJCDANXX:2:1101:4969:25485_CONS_SUB_SUB",
-# #"HISEQ:267:CAJCDANXX:2:1111:2773:5692_CONS_SUB_SUB",
-# "HISEQ:267:CAJCDANXX:2:1105:10506:33069_CONS_SUB_SUB_CMP",
-# #"HISEQ:267:CAJCDANXX:2:1101:16250:29354_CONS_SUB_SUB_CMP",
-# "HISEQ:267:CAJCDANXX:2:1101:13278:2098_CONS_SUB_SUB")
-
-
-# # fit models to many OTUs
-# allFits_occupancy <- llply(OTUlist,
-#                            function(x) fitEDNAmodel(OTU=x, niter=100),
-#                            .inform = T)
-# names(allFits_occupancy) <- unlist(OTUlist)
-
-
-allFits_occupancy <- llply(OTUlist[1:50],
-                           function(x) tryCatch(fitEDNAmodel(OTU=x, niter = 100),
+allFits_occupancy <- llply(OTUlist[1:10],
+                           function(x) tryCatch(fitEDNAmodel(OTU=x, niter = 1000),
                                                 error = function(t)
                                                   {cat("\n theta overparametrized\n\n")}),
                            .inform = T)
-names(allFits_occupancy) <- unlist(OTUlist)[1:50]
-# save(file="allFits_occupancy_time_7491_eukaryotes.Rdata", allFits_occupancy)
-# load("allFits_occupancy_time_7491_eukaryotes.Rdata")
-# 
-# could fit model?
+names(allFits_occupancy) <- unlist(OTUlist)[10:20]
+
+save(file="allFits_occupancy_time_7491_eukaryotes.Rdata", allFits_occupancy)
+
 model_ok <- !(unlist(llply(allFits_occupancy,
                                  function(x)
                                    all(x == "\n theta overparametrized\n\n"))))
-# sum(model_ok) # 2359
+sum(model_ok)
+
+
+
+
 # 
 # # models that could fit
 allFits_good <- allFits_occupancy[model_ok]
@@ -350,4 +276,43 @@ allFits_occupancy <- allFits_occupancy[grepl("alpha.original",
 # 
 # #pre 1700, pool all
 # ourSiteSampleData$Century <-  100 * round(ourSiteSampleData$original_date_final/100)
+
+# #formatting time periods ####
+# ourSiteSampleData$yearGroups <- NA
+# ourSiteSampleData$yearGroups[ourSiteSampleData$date_final<1950] <- 1
+# ourSiteSampleData$yearGroups[ourSiteSampleData$date_final>=1950 &
+#                                ourSiteSampleData$date_final<1990] <- 2
+# ourSiteSampleData$yearGroups[ourSiteSampleData$date_final>=1990] <- 3
+# ourSiteSampleData$yearGroups <- factor(ourSiteSampleData$yearGroups,
+#                                        levels = c("1","2","3"))
+
+#subset data frame for when we have OTU data ####
+# ourSiteSampleData <- subset(ourSiteSampleData,dna %in% this_otu$dna)
+# #centre/scale the date
+# ourSiteSampleData$original_date_final <- ourSiteSampleData$date_final
+# ourSiteSampleData$date_final <- scale(ourSiteSampleData$date_final)
+
+# fitModel <- occModel(formulaSite = ~ 1, #lake occurence probabiliy (lake area?)
+#                      formulaSiteAndSample = ~ yearGroups -1, #lake-time occurrence probability
+#                      formulaReplicate = ~ original_date_final + upper, #detection probability at each lake-time
+#                      detectionMats=formatted4Model,
+#                      siteColName="Lake",
+#                      sampleColName="level2",
+#                      siteAndSampleData = ourSiteSampleData,
+#                      niter=niter)
+
+
+# OTUlist <- c("HISEQ:267:CAJCDANXX:2:1101:4969:25485_CONS_SUB_SUB",
+# #"HISEQ:267:CAJCDANXX:2:1111:2773:5692_CONS_SUB_SUB",
+# "HISEQ:267:CAJCDANXX:2:1105:10506:33069_CONS_SUB_SUB_CMP",
+# #"HISEQ:267:CAJCDANXX:2:1101:16250:29354_CONS_SUB_SUB_CMP",
+# "HISEQ:267:CAJCDANXX:2:1101:13278:2098_CONS_SUB_SUB")
+
+
+# # fit models to many OTUs
+# allFits_occupancy <- llply(OTUlist,
+#                            function(x) fitEDNAmodel(OTU=x, niter=100),
+#                            .inform = T)
+# names(allFits_occupancy) <- unlist(OTUlist)
+
 
