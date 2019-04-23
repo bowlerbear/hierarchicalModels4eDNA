@@ -3,10 +3,10 @@ library(plyr)
 library(reshape2)
 library(tidyverse)
 require(VGAM)
-# setwd("~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/workdir/")
+setwd("~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/workdir/")
 rm(list=ls())
-# load(file="~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/Data/grenoble_experiment/output_final_dataset/final_data.Rdata")
-load(file="../final_data.Rdata")
+load(file="~/Google Drive/Lake diversity/Lake_diversity_Prepared/Analyses Lake Div/Data/grenoble_experiment/output_final_dataset/final_data.Rdata")
+# load(file="../final_data.Rdata")
 
 # OTUs
 final_data$final_assign %>%
@@ -58,7 +58,7 @@ ourSiteSampleData$date_final_4 <- as.numeric(scale(ourSiteSampleData$date_final^
 ourSiteSampleData$date_final_5 <- as.numeric(scale(ourSiteSampleData$date_final^5))
 str(ourSiteSampleData)
 
-# OTU <- "HISEQ:267:CAJCDANXX:2:1101:4969:25485_CONS_SUB_SUB"
+OTU <- "HISEQ:267:CAJCDANXX:2:1101:4969:25485_CONS_SUB_SUB"
 
 # function to fit eDNAoccupancy model on a single OTU ####
 fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
@@ -99,14 +99,15 @@ fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
   # fit model ####
     #for testing effect of ecological covariates on community metrics e,.g. richness
   fitModel <- occModel(formulaSite = ~ 1,
-                       formulaSiteAndSample = ~ date_final_2 + date_final_3,
+                       formulaSiteAndSample = ~ date_final_1 + date_final_2 + date_final_3,
                        formulaReplicate = ~ reps_sum_scaled + upper,
                        detectionMats=formatted4Model,
                        siteColName="Lake",
                        sampleColName="level2",
                        siteAndSampleData = ourSiteSampleData,
-                       niter=niter)
+                       niter=1000)
     
+  niter = 1000
     # plot the traces
     post_sum <- posteriorSummary(fitModel, outputSummary=T, mcError = T, 
                                  burnin = niter/2)
@@ -123,7 +124,7 @@ fitEDNAmodel <- function(OTU=myOTU, niter = niter, burnin = burnin){
                               my_params[i+2],my_params[i+3]))
         } else {
           plotTrace(fitModel, c(my_params[i],my_params[i+1],
-                                my_params[i+2]))
+                                my_params[i+2], my_params[i+3]))
         }
       }
     dev.off()
